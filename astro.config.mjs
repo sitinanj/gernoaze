@@ -4,12 +4,9 @@ import tailwind from "@astrojs/tailwind";
 import cloudflare from "@astrojs/cloudflare";
 
 // https://astro.build/config
-
-// https://astro.build/config
-
-// https://astro.build/config
 export default defineConfig({
   integrations: [tailwind()],
   output: 'hybrid',
-  adapter: cloudflare()
+  adapter: cloudflare(),
+  
 });
