@@ -1,0 +1,105 @@
+---
+import Container from "./Container.astro";
+
+const GITHUB_USER = "sitinanj";
+
+interface Repo {
+    name: string;
+    html_url: string;
+    description: string | null;
+    language: string | null;
+    stargazers_count: number;
+    fork: boolean;
+    pushed_at: string;
+}
+
+// Fetched at build time: zero runtime API calls, page stays fully static.
+const headers = { Accept: "application/vnd.github+json", "User-Agent": "gernoaze-site" };
+
+async function fetchJson<T>(url: string): Promise<T | null> {
+    try {
+        const res = await fetch(url, { headers });
+        return res.ok ? ((await res.json()) as T) : null;
+    } catch {
+        return null;
+    }
+}
+
+const [user, allRepos, events] = await Promise.all([
+    fetchJson<{ public_repos: number; followers: number }>(`https://api.github.com/users/${GITHUB_USER}`),
+    fetchJson<Repo[]>(`https://api.github.com/users/${GITHUB_USER}/repos?sort=pushed&per_page=100`),
+    fetchJson<{ type: string; created_at: string; payload: { commits?: unknown[] } }[]>(
+        `https://api.github.com/users/${GITHUB_USER}/events/public?per_page=100`,
+    ),
+]);
+
+const repos = (allRepos ?? []).filter((r) => !r.fork).slice(0, 6);
+
+const pushEvents = (events ?? []).filter((e) => e.type === "PushEvent");
+const recentCommits = pushEvents.reduce((sum, e) => sum + (e.payload.commits?.length ?? 0), 0);
+const lastActive = events?.[0]?.created_at ?? null;
+
+const dateFmt = new Intl.DateTimeFormat("en", { day: "numeric", month: "short", year: "numeric" });
+const builtAt = dateFmt.format(new Date());
+
+const stats = [
+    { label: "public repos", value: user?.public_repos ?? repos.length },
+    { label: "followers", value: user?.followers ?? 0 },
+    { label: "recent commits", value: recentCommits },
+    { label: "last active", value: lastActive ? dateFmt.format(new Date(lastActive)) : "—" },
+];
+---
+
+<div id="activity">
+    <Container>
+        <div class="md:w-2/3 lg:w-1/2">
+            <h2 class="my-8 text-2xl font-bold text-gray-700 dark:text-white md:text-4xl">Open source activity</h2>
+            <p class="text-gray-600 dark:text-gray-300">
+                A live snapshot of what we ship on
+                <a href={`https://github.com/${GITHUB_USER}`} class="text-secondary font-semibold" rel="noopener">GitHub</a>.
+                Captured at build time, so it costs your browser nothing.
+            </p>
+        </div>
+
+        <div class="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {
+                stats.map((stat) => (
+                    <div class="rounded-2xl border border-gray-100 bg-white p-6 text-center shadow-2xl shadow-gray-600/10 dark:border-gray-700 dark:bg-gray-800 dark:shadow-none">
+                        <div class="text-3xl font-bold text-gray-900 dark:text-white">{stat.value}</div>
+                        <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">{stat.label}</div>
+                    </div>
+                ))
+            }
+        </div>
+
+        {
+            repos.length > 0 && (
+                <div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {repos.map((repo) => (
+                        <a
+                            href={repo.html_url}
+                            rel="noopener"
+                            class="group rounded-2xl border border-gray-100 bg-white p-6 shadow-2xl shadow-gray-600/10 transition hover:border-secondary/40 dark:border-gray-700 dark:bg-gray-800 dark:shadow-none dark:hover:border-secondary/40"
+                        >
+                            <div class="flex items-center justify-between">
+                                <span class="font-semibold text-gray-900 group-hover:text-secondary dark:text-white">{repo.name}</span>
+                                {repo.stargazers_count > 0 && (
+                                    <span class="text-sm text-gray-500 dark:text-gray-400">★ {repo.stargazers_count}</span>
+                                )}
+                            </div>
+                            <p class="mt-2 min-h-[2.5rem] text-sm text-gray-600 dark:text-gray-300">
+                                {repo.description ?? "No description yet."}
+                            </p>
+                            <div class="mt-4 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                                <span>{repo.language ?? ""}</span>
+                                <span>updated {dateFmt.format(new Date(repo.pushed_at))}</span>
+                            </div>
+                        </a>
+                    ))}
+                </div>
+            )
+        }
+
+        <p class="mt-6 text-xs text-gray-400 dark:text-gray-500">Snapshot from {builtAt}.</p>
+    </Container>
+</div>
